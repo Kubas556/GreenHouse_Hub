@@ -1,0 +1,1 @@
+Nezapomeň přidat do kořenového adresáře json s firebase údaji!!
