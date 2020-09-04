@@ -1,17 +1,52 @@
 const express = require("express");
-const WebSocket = require('ws');
-const http = require('http');
-const ip = require('ip');
-//var admin = require("firebase-admin");
-var firebase = require("firebase/app");
+const firebase = require("firebase/app");
 require("firebase/auth");
 require("firebase/database");
-var account = require("./serviceAccount.json");
+//const account = require("./serviceAccount.json");
+//app var
+const ip = require('ip');
 const app = express();
-const port = 3000;
+const appPort = 3000;
 const appIp = ip.address();
+//websocket var
+const WebSocket = require('ws');
+const http = require('http');
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+//brodcast var
+const dgram = require('dgram');
+const client = dgram.createSocket('udp4');
+const brodcastListenPort = 12345;
+const sendSendPort = 2551;
+//#####################################
+//          Brodcast Listener
+//#####################################
+
+client.on('listening', function () {
+   var address = client.address();
+   console.log('UDP Client listening on ' + address.address + ":" + address.port);
+   client.setBroadcast(true);
+});
+
+client.on('message', function (message, rinfo) {
+   //console.log('Message from: ' + rinfo.address + ':' + rinfo.port +' - ' + message);
+   if(message == "gimme your ip bro"){
+      console.log(rinfo.address+" wants my IP");
+      var bufferNull = Buffer.from([0x00]);
+      //var message = Buffer.from("WiFi-login|Kubas445|Kubas4451593572684");
+      var message2 = Buffer.from("ok its me");
+      message2 = Buffer.concat([message2, bufferNull]);
+      client.send(message2, 0, message2.length, sendSendPort, rinfo.address, function() {
+         console.log("Send '" + message2 + "'");
+      });
+   }
+});
+
+client.bind(brodcastListenPort);
+
+//#####################################
+//          Firebase Setup
+//#####################################
 
 const config = {
    apiKey: 'AIzaSyBjjKTJrHGT6IYaLRTtiuRfRIUt5QWMWYc',
@@ -61,6 +96,10 @@ auth.onAuthStateChanged(authUser => {
 
 auth.signInWithEmailAndPassword("jakubsedlak102@gmail.com","1593572684").catch(error => console.log(error));
 
+//#####################################
+//          WebSocket Setup
+//#####################################
+
 wss.on('connection', (ws,request) => {
    //connection is up, let's add a simple simple event
    ws.on('message', (message) => {
@@ -96,6 +135,6 @@ wss.on('connection', (ws,request) => {
       resp.send("sing in please");
 });*/
 
-server.listen(port,appIp, () => {
-   console.log(`Example app listening at http://${appIp}:${port}`)
+server.listen(appPort,appIp, () => {
+   console.log(`Example app listening at http://${appIp}:${appPort}`)
 })
