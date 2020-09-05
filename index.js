@@ -17,7 +17,9 @@ const wss = new WebSocket.Server({ server });
 const dgram = require('dgram');
 const client = dgram.createSocket('udp4');
 const brodcastListenPort = 12345;
-const sendSendPort = 2551;
+const brodcastSendPort = 2551;
+let macToIpAddress = [];
+
 //#####################################
 //          Brodcast Listener
 //#####################################
@@ -36,7 +38,7 @@ client.on('message', function (message, rinfo) {
       //var message = Buffer.from("WiFi-login|Kubas445|Kubas4451593572684");
       var message2 = Buffer.from("ok its me");
       message2 = Buffer.concat([message2, bufferNull]);
-      client.send(message2, 0, message2.length, sendSendPort, rinfo.address, function() {
+      client.send(message2, 0, message2.length, brodcastSendPort, rinfo.address, function() {
          console.log("Send '" + message2 + "'");
       });
    }
@@ -75,7 +77,8 @@ function refreshOrCreateTargetTempListener(userID) {
    targetTempListener = database.ref("/users/"+userID+"/devices/")
    targetTempListener.on("child_changed",data => {
       //targetTemp = data.val().targetTemp;
-      console.log(data.val().targetTemp);
+      setTargetTempESPCommand(data.key,data.val().targetTemp);
+      console.log("executed setTargetTempESPCommand with temp: "+data.val().targetTemp);
    });
 }
 
@@ -110,12 +113,25 @@ wss.on('connection', (ws,request) => {
       switch (command[0]) {
          case "setTemp":            //setTemp|ID|temp value
             if(command.length === 3) {
-               console.log("setTemp command");
+               setTempCommand(command[1],command[2]);
                ws.send("res|success");
             } else {
                console.log("bad arguments");
                ws.send("res|bad args");
             }
+            break;
+         case "sendMac":
+            if(command.length === 2) {
+               assignIpToMac(command[1],_ip,ws);
+               ws.send("res|success");
+            } else {
+               console.log("bad arguments");
+               ws.send("res|bad args");
+            }
+            break;
+         default:
+            console.log("unknown command");
+            ws.send("res|unknown");
             break;
       }
       //log the received message and send it back to the client
@@ -128,6 +144,51 @@ wss.on('connection', (ws,request) => {
    console.log("sending message");
 });
 
+//#####################################
+//          Helper Functions
+//#####################################
+
+function findIpAddress(macAddress) {
+   return macToIpAddress.filter(item => {
+      return item.mac === macAddress;
+   });
+}
+
+//#####################################
+//          Command Functions
+//#####################################
+
+function assignIpToMac(mac,ip,ws) {
+   let testExist = findIpAddress(mac);
+   if(testExist.length > 0) {
+      testExist[0].ip = ip;
+      testExist[0].ws = ws;
+      console.log("ip updated for macaddress");
+   } else {
+      macToIpAddress.push({
+         ip: ip,
+         mac: mac,
+         ws:ws
+      });
+   }
+
+   console.log("to mac address: "+mac+" was asigned ip: "+ip);
+}
+
+function setTempCommand(mac,temp) {
+   console.log("setTemp command executed on "+mac+" with temperature of "+temp);
+   database.ref("/users/"+lastUserUID+"/devices/"+mac+"/temp").set(temp);
+}
+
+function setTargetTempESPCommand(mac,temp) {
+   let target = findIpAddress(mac);
+   if(target.length > 0)
+   target[0].ws.send("setTargetTemp|"+temp);
+}
+
+//#####################################
+//             Web interface
+//#####################################
 /*app.get("/",(req,resp)=>{
    if(authState === 'SIGNED_IN')
       resp.send("temp "+ targetTemp +" "+lastUserUID);
