@@ -107,7 +107,8 @@ wss.on('connection', (ws,request) => {
    //connection is up, let's add a simple simple event
    ws.on('message', (message) => {
       const _ip = request.socket.remoteAddress;
-      message = message.replace("\n","");
+      message = message.replace('\n','');
+      message = message.replace('\r','');
       message = message.trim();
       const command = message.split("|");
       switch (command[0]) {
@@ -176,8 +177,14 @@ function assignIpToMac(mac,ip,ws) {
 }
 
 function setTempCommand(mac,temp) {
-   console.log("setTemp command executed on "+mac+" with temperature of "+temp);
-   database.ref("/users/"+lastUserUID+"/devices/"+mac+"/temp").set(temp);
+   if(findIpAddress(mac).length > 0) {
+      console.log("setTemp command executed on " + mac + " with temperature of " + temp);
+      database.ref("/users/" + lastUserUID + "/devices/" + mac + "/temp").set(temp.toString()).catch(error => {
+         console.log("bad command");
+      });
+   } else {
+      console.log("invalid parameters value!");
+   }
 }
 
 function setTargetTempESPCommand(mac,temp) {
