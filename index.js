@@ -1,7 +1,5 @@
 const express = require("express");
-const firebase = require("firebase/app");
-require("firebase/auth");
-require("firebase/database");
+const firebase = require('firebase');
 //const account = require("./serviceAccount.json");
 //app var
 const ip = require('ip');
@@ -13,38 +11,14 @@ const WebSocket = require('ws');
 const http = require('http');
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-//brodcast var
-const dgram = require('dgram');
-const client = dgram.createSocket('udp4');
-const brodcastListenPort = 12345;
-const brodcastSendPort = 2551;
+const BrodcastListener = require('./BrodcastListener');
 let macToIpAddress = [];
 
 //#####################################
 //          Brodcast Listener
 //#####################################
 
-client.on('listening', function () {
-   var address = client.address();
-   console.log('UDP Client listening on ' + address.address + ":" + address.port);
-   client.setBroadcast(true);
-});
-
-client.on('message', function (message, rinfo) {
-   //console.log('Message from: ' + rinfo.address + ':' + rinfo.port +' - ' + message);
-   if(message == "gimme your ip bro"){
-      console.log(rinfo.address+" wants my IP");
-      var bufferNull = Buffer.from([0x00]);
-      //var message = Buffer.from("WiFi-login|Kubas445|Kubas4451593572684");
-      var message2 = Buffer.from("ok its me");
-      message2 = Buffer.concat([message2, bufferNull]);
-      client.send(message2, 0, message2.length, brodcastSendPort, rinfo.address, function() {
-         console.log("Send '" + message2 + "'");
-      });
-   }
-});
-
-client.bind(brodcastListenPort);
+BrodcastListener();
 
 //#####################################
 //          Firebase Setup
@@ -67,31 +41,79 @@ const auth = firebase.auth();
 const database = firebase.database();
 var authState = 'SIGNED_OUT';
 var lastUserUID;
-let targetTempListener;
+let targetTempListeners = [];
+let irrigationListeners = [];
+let irrigationSoilHumidityListeners = [];
 
-function refreshOrCreateTargetTempListener(userID) {
-   if(targetTempListener) {
-      targetTempListener.off("child_changed");
+function removeTargetTempListener(mac) {
+   targetTempListeners[mac].off("value");
+   targetTempListeners[mac] = undefined;
+}
+
+function removeIrrigationListener(mac) {
+   irrigationListeners[mac].off("value");
+   irrigationListeners[mac] = undefined;
+}
+
+function removeIrrigationSoilHumidityListener(mac) {
+   irrigationSoilHumidityListeners[mac].off("value");
+   irrigationSoilHumidityListeners[mac] = undefined;
+}
+
+function refreshOrCreateTargetTempListener(mac) {
+   if(targetTempListeners[mac]) {
+      targetTempListeners[mac].off("value");
    }
 
-   targetTempListener = database.ref("/users/"+userID+"/devices/")
-   targetTempListener.on("child_changed",data => {
+   targetTempListeners[mac] = database.ref("/users/"+lastUserUID+"/devices/"+mac+"/targetTemp");
+   targetTempListeners[mac].on("value",data => {
       //targetTemp = data.val().targetTemp;
-      setTargetTempESPCommand(data.key,data.val().targetTemp);
-      console.log("executed setTargetTempESPCommand with temp: "+data.val().targetTemp);
+      try {
+         if (setTargetTempESPCommand(mac, data.val().temp, data.val().tempTolerantN, data.val().tempTolerantP))
+            console.log("[server]executed setTargetTempESPCommand with temp: " + data.val().temp + " and tolerants: " + data.val().tempTolerantN + " and " + data.val().tempTolerantP);
+      } catch (e) {
+         console.log(e);
+      }
    });
 }
 
-/*admin.initializeApp({
-   credential:admin.credential.cert(account),
-   databaseURL: "https://my-website-c179c.firebaseio.com"
-});*/
+function refreshOrCreateIrrigationListener(mac) {
+   if(irrigationListeners[mac]) {
+      irrigationListeners[mac].off("value");
+   }
+
+   irrigationListeners[mac] = database.ref("/users/"+lastUserUID+"/devices/"+mac+"/irrigation");
+   irrigationListeners[mac].on("value",data => {
+      //targetTemp = data.val().targetTemp;
+      try {
+         if (setIrrigationESPCommand(mac, data.val().fertiliser, data.val().water, data.val().ratio, data.val().total))
+            console.log("[server]executed setIrrigationESPCommand with fertiliser: " + data.val().fertiliser + " and water: " + data.val().water + " and total: " + data.val().total);
+      } catch (e) {
+         console.log(e);
+      }
+   });
+}
+
+function refreshOrCreateIrrigationSoilHumidityListener(mac) {
+   if(irrigationSoilHumidityListeners[mac]) {
+      irrigationSoilHumidityListeners[mac].off("value");
+   }
+
+   irrigationSoilHumidityListeners[mac] = database.ref("/users/"+lastUserUID+"/devices/"+mac+"/irrigationSoilHumidity");
+   irrigationSoilHumidityListeners[mac].on("value", data => {
+      try {
+         if(setIrrigationSoilHumidityESPCommand(mac,data.val()))
+            console.log("[server]executed setIrrigationSoilHumidityESPCommand with value: "+ data.val());
+      } catch (e) {
+         console.log(e);
+      }
+   });
+}
 
 auth.onAuthStateChanged(authUser => {
    if(authUser) {
       authState = 'SIGNED_IN';
       lastUserUID = authUser.uid;
-      refreshOrCreateTargetTempListener(lastUserUID);
    } else {
       authState = 'SIGNED_OUT'
    }
@@ -112,37 +134,75 @@ wss.on('connection', (ws,request) => {
       message = message.trim();
       const command = message.split("|");
       switch (command[0]) {
+         case "getIrrigation":
+            if(command.length === 2) {
+               getIrrigationCommand(ws,command[1]);
+            } else {
+               console.log("[server]bad arguments");
+               //ws.send("res|bad args");
+            }
+            break;
+         case "getIrrigationSoilHumidity":
+            if(command.length === 2) {
+               getIrrigationSoilHumidity(ws,command[1]);
+            } else {
+               console.log("[server]bad arguments");
+            }
+            break;
+         case "getTemp":
+            if(command.length === 2) {
+               getTargetTempCommand(ws,command[1]);
+            } else {
+               console.log("[server]bad arguments");
+               //ws.send("res|bad args");
+            }
+            break;
          case "setTemp":            //setTemp|ID|temp value
             if(command.length === 3) {
                setTempCommand(command[1],command[2]);
-               ws.send("res|success");
             } else {
-               console.log("bad arguments");
-               ws.send("res|bad args");
+               console.log("[server]bad arguments");
+               //ws.send("res|bad args");
+            }
+            break;
+         case "setSoilHumidity":
+            if(command.length === 3) {
+               setSoilHumidityCommand(command[1],command[2]);
+            } else {
+               console.log("[server]bad arguments");
             }
             break;
          case "sendMac":
             if(command.length === 2) {
                assignIpToMac(command[1],_ip,ws);
-               ws.send("res|success");
+               refreshOrCreateTargetTempListener(command[1]);
+               refreshOrCreateIrrigationListener(command[1]);
+               refreshOrCreateIrrigationSoilHumidityListener(command[1]);
             } else {
-               console.log("bad arguments");
-               ws.send("res|bad args");
+               console.log("[server]bad arguments");
+               //ws.send("res|bad args");
             }
             break;
          default:
-            console.log("unknown command");
-            ws.send("res|unknown");
+            console.log("[server]unknown command");
+            //ws.send("res|unknown");
             break;
       }
       //log the received message and send it back to the client
-      console.log('received from '+_ip+': %s', message);
+      console.log('[server]received from '+_ip+': %s', message);
       //ws.send(`Hello, you sent -> ${message}`);
    });
-
+   ws.on('error', function close() {
+      let ws = macToIpAddress.filter(value => value.ws == ws);
+      if(ws.length > 0)
+         removeTargetTempListener(ws.mac);
+         removeIrrigationListener(ws.mac);
+         removeIrrigationSoilHumidityListener(ws.mac);
+      console.log('disconnected');
+   });
    //send immediatly a feedback to the incoming connection
-   ws.send('Hi there, I am a WebSocket server');
-   console.log("sending message");
+   //ws.send('Hi there, I am a WebSocket server');
+   //console.log("sending message");
 });
 
 //#####################################
@@ -164,7 +224,7 @@ function assignIpToMac(mac,ip,ws) {
    if(testExist.length > 0) {
       testExist[0].ip = ip;
       testExist[0].ws = ws;
-      console.log("ip updated for macaddress");
+      console.log("[server]ip updated for macaddress");
    } else {
       macToIpAddress.push({
          ip: ip,
@@ -173,36 +233,115 @@ function assignIpToMac(mac,ip,ws) {
       });
    }
 
-   console.log("to mac address: "+mac+" was asigned ip: "+ip);
+   console.log("[server]to mac address: "+mac+" was asigned ip: "+ip);
 }
-
-function setTempCommand(mac,temp) {
-   if(findIpAddress(mac).length > 0) {
-      console.log("setTemp command executed on " + mac + " with temperature of " + temp);
-      database.ref("/users/" + lastUserUID + "/devices/" + mac + "/temp").set(temp.toString()).catch(error => {
-         console.log("bad command");
+//###########################################
+//manual get commands (work in progress)
+function getTargetTempCommand(ws,mac) {
+   try {
+      database.ref("/users/" + lastUserUID + "/devices/" + mac + "/targetTemp").once('value', data => {
+         ws.send("res|" + data.val().temp + "|" + data.val().tempTolerantN + "|" + data.val().tempTolerantP);
       });
-   } else {
-      console.log("invalid parameters value!");
+   }catch (e) {
+      console.log(e);
    }
 }
 
-function setTargetTempESPCommand(mac,temp) {
+function getIrrigationCommand(ws,mac) {
+   try {
+      database.ref("/users/" + lastUserUID + "/devices/" + mac + "/irrigation").once('value', data => {
+         ws.send("res|" + data.val().fertiliser + "|" + data.val().water + "|" + data.val().ratio + "|" + data.val().total);
+      });
+   } catch (e) {
+      console.log(e);
+   }
+}
+
+function getIrrigationSoilHumidity(ws,mac) {
+   try {
+      database.ref("/users/" + lastUserUID + "/devices/" + mac + "/irrigationSoilHumidity").once('value', data => {
+         ws.send("res|" + data.val());
+      });
+   } catch (e) {
+      console.log(e);
+   }
+
+}
+
+//###########################################
+
+//send new temp to firebase
+function setTempCommand(mac,temp) {
+   if(findIpAddress(mac).length > 0) {
+      console.log("[server]setTemp command executed on " + mac + " with temperature of " + temp);
+      database.ref("/users/" + lastUserUID + "/devices/" + mac + "/temp").set(temp.toString()).catch(error => {
+         console.log("[server]bad command");
+      });
+      //ws.send("res|success");
+   } else {
+      console.log("[server]invalid parameters value!");
+      //ws.send("res|invalid params");
+   }
+}
+
+//send new soil humidity to firebase
+function setSoilHumidityCommand(mac,hum) {
+   if(findIpAddress(mac).length > 0) {
+      console.log("[server]setSoilHumidityCommand command executed on " + mac + " with humidity of " + hum);
+      database.ref("/users/" + lastUserUID + "/devices/" + mac + "/soilHumidity").set(hum.toString()).catch(error => {
+         console.log("[server]bad command");
+      });
+      //ws.send("res|success");
+   } else {
+      console.log("[server]invalid parameters value!");
+      //ws.send("res|invalid params");
+   }
+}
+
+//send new target temp info to ESP
+function setTargetTempESPCommand(mac,temp,toleranceN,toleranceP) {
    let target = findIpAddress(mac);
-   if(target.length > 0)
-   target[0].ws.send("setTargetTemp|"+temp);
+   if(target.length > 0) {
+      target[0].ws.send("setTargetTemp|" + temp + "|" + toleranceN + "|" + toleranceP);
+      return true;
+   } else {
+      return false;
+   }
+}
+
+//send new irrigation info to ESP
+function setIrrigationESPCommand(mac,fert,water,ratio,total) {
+   let target = findIpAddress(mac);
+   if(target.length > 0) {
+      target[0].ws.send("setIrrigation|" + fert + "|" + water + "|" + ratio + "|" + total);
+      return true;
+   } else {
+      return false;
+   }
+}
+
+//send new irrigation soil humidity value to ESP
+function setIrrigationSoilHumidityESPCommand(mac,val) {
+   let target = findIpAddress(mac);
+   if(target.length > 0) {
+      target[0].ws.send("setIrrigationSoilHumidity|" + val);
+      return true;
+   } else {
+      return false;
+   }
 }
 
 //#####################################
 //             Web interface
 //#####################################
-/*app.get("/",(req,resp)=>{
+app.use(express.static("public/build"));
+app.get("/",(req,resp)=>{
    if(authState === 'SIGNED_IN')
-      resp.send("temp "+ targetTemp +" "+lastUserUID);
+      resp.sendfile('./public/index.html');
    else
       resp.send("sing in please");
-});*/
+});
 
 server.listen(appPort,appIp, () => {
-   console.log(`Example app listening at http://${appIp}:${appPort}`)
+   console.log(`[server]Example app listening at http://${appIp}:${appPort}`)
 })
