@@ -4,8 +4,8 @@ const firebase = require('firebase');
 //app var
 const ip = require('ip');
 const app = express();
-const appPort = 3000;
-const appIp = ip.address();
+const appPort = 3300;
+const appIp = ip.address(); //in dev mode only!!! Use nginx proxy with SSL instead
 //websocket var
 const WebSocket = require('ws');
 const http = require('http');
@@ -14,11 +14,6 @@ const wss = new WebSocket.Server({ server });
 const BrodcastListener = require('./BrodcastListener');
 let macToIpAddress = [];
 
-//#####################################
-//          Brodcast Listener
-//#####################################
-
-BrodcastListener();
 
 //#####################################
 //          Firebase Setup
@@ -114,6 +109,8 @@ auth.onAuthStateChanged(authUser => {
    if(authUser) {
       authState = 'SIGNED_IN';
       lastUserUID = authUser.uid;
+      BrodcastListener();
+      console.log("signed as Kubas445");
    } else {
       authState = 'SIGNED_OUT'
    }
@@ -174,10 +171,16 @@ wss.on('connection', (ws,request) => {
             break;
          case "sendMac":
             if(command.length === 2) {
-               assignIpToMac(command[1],_ip,ws);
-               refreshOrCreateTargetTempListener(command[1]);
-               refreshOrCreateIrrigationListener(command[1]);
-               refreshOrCreateIrrigationSoilHumidityListener(command[1]);
+               findUserDevice(command[1]).once("value",data => {
+                  let device = data.val();
+                  if(device) {
+                     console.log("device found");
+                     assignIpToMac(command[1], _ip, ws);
+                     refreshOrCreateTargetTempListener(command[1]);
+                     refreshOrCreateIrrigationListener(command[1]);
+                     refreshOrCreateIrrigationSoilHumidityListener(command[1]);
+                  }
+               });
             } else {
                console.log("[server]bad arguments");
                //ws.send("res|bad args");
@@ -213,6 +216,10 @@ function findIpAddress(macAddress) {
    return macToIpAddress.filter(item => {
       return item.mac === macAddress;
    });
+}
+
+function findUserDevice(macAddress) {
+   return database.ref("/users/"+lastUserUID+"/devices").child(macAddress);
 }
 
 //#####################################
