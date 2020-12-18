@@ -23,7 +23,7 @@
     "@types/react": "^16.9.49",
     "@zeit/next-typescript": "^1.1.1",
     "animejs": "^3.2.0",
-    "chart.js": "^2.9.3",
+    "chart.js": "^2.9.4",
     "date-fns": "^2.16.1",
     "firebase": "^7.21.1",
     "firebase-tools": "^7.16.2",
@@ -32,7 +32,7 @@
     "node-fetch": "^2.6.1",
     "now": "^17.1.1",
     "react": "^16.13.1",
-    "react-chartjs-2": "^2.10.0",
+    "react-chartjs-2": "^2.11.1",
     "react-dom": "^16.13.1",
     "swr": "^0.1.18",
     "typescript": "^3.9.7"

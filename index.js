@@ -1,12 +1,19 @@
 const express = require("express");
 const firebase = require('firebase');
 const sqlite3 = require('sqlite3').verbose();
-let db = new sqlite3.Database(':memory:', (err) => {
+let db = new sqlite3.Database('/home/pi/greenhouse.db', (err) => {
    if (err) {
       return console.error(err.message);
    }
-   console.log('Connected to the in-memory SQlite database.');
+   console.log('Connected to the greenhouse SQlite database.');
 });
+
+db.serialize(function() {
+  db.each("SELECT * FROM login_user", function(err, row) {
+      console.log(row.mail);
+  });
+});
+
 //const account = require("./serviceAccount.json");
 //app var
 const ip = require('ip');
@@ -195,6 +202,9 @@ wss.on('connection', (ws,request) => {
                console.log("[server]bad arguments");
                //ws.send("res|bad args");
             }
+            break;
+         case "getLoginStatus":
+            ws.send(JSON.stringify({status:authState}))
             break;
          default:
             console.log("[server]unknown command");
