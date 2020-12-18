@@ -1,11 +1,18 @@
 const express = require("express");
 const firebase = require('firebase');
+const sqlite3 = require('sqlite3').verbose();
+let db = new sqlite3.Database(':memory:', (err) => {
+   if (err) {
+      return console.error(err.message);
+   }
+   console.log('Connected to the in-memory SQlite database.');
+});
 //const account = require("./serviceAccount.json");
 //app var
 const ip = require('ip');
 const app = express();
 const appPort = 3300;
-const appIp = ip.address(); //in dev mode only!!! Use nginx proxy with SSL instead
+const appIp = ip.address();
 //websocket var
 const WebSocket = require('ws');
 const http = require('http');
@@ -109,6 +116,9 @@ auth.onAuthStateChanged(authUser => {
    if(authUser) {
       authState = 'SIGNED_IN';
       lastUserUID = authUser.uid;
+      server.listen(appPort,appIp, () => {
+         console.log(`[server]Example app listening at http://${appIp}:${appPort}`)
+      })
       BrodcastListener();
       console.log("signed as Kubas445");
    } else {
@@ -341,14 +351,32 @@ function setIrrigationSoilHumidityESPCommand(mac,val) {
 //#####################################
 //             Web interface
 //#####################################
-app.use(express.static("public/build"));
-app.get("/",(req,resp)=>{
+//app.use(express.static("server_sites/build"));
+app.get("/status",(req,resp)=>{
    if(authState === 'SIGNED_IN')
-      resp.sendfile('./public/index.html');
+      resp.send('server is running');
    else
       resp.send("sing in please");
 });
 
-server.listen(appPort,appIp, () => {
-   console.log(`[server]Example app listening at http://${appIp}:${appPort}`)
-})
+
+function onExit() {
+   db.close((err) => {
+      if (err) {
+         return console.error(err.message);
+      }
+      console.log('Close the database connection.');
+      process.exit();
+   });
+}
+//process.on('exit', onExit);
+
+//ctrl+c event
+process.on('SIGINT', onExit);
+
+//"kill pid"
+process.on('SIGUSR1', onExit);
+process.on('SIGUSR2', onExit);
+
+//uncaught exceptions
+process.on('uncaughtException', onExit);

@@ -4,17 +4,20 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "concurrently --kill-others \"npm run start\" \"cd server_administration && npm run start\""
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "concurrently": "^5.3.0",
     "dgram": "^1.0.1",
     "express": "^4.17.1",
     "firebase": "^7.19.1",
     "firebase-admin": "^8.10.0",
     "http": "0.0.1-security",
     "ip": "^1.1.5",
+    "sqlite3": "^5.0.0",
     "ws": "^7.3.1"
   }
 }
