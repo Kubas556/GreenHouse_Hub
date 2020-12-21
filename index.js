@@ -1,7 +1,8 @@
 const express = require("express");
 const firebase = require('firebase');
 const sqlite3 = require('sqlite3').verbose();
-let db = new sqlite3.Database('/home/pi/greenhouse.db', (err) => {
+const path = require('path');
+/*let db = new sqlite3.Database('/home/pi/greenhouse.db', (err) => {
    if (err) {
       return console.error(err.message);
    }
@@ -12,7 +13,7 @@ db.serialize(function() {
   db.each("SELECT * FROM login_user", function(err, row) {
       console.log(row.mail);
   });
-});
+});*/
 
 //const account = require("./serviceAccount.json");
 //app var
@@ -123,17 +124,28 @@ auth.onAuthStateChanged(authUser => {
    if(authUser) {
       authState = 'SIGNED_IN';
       lastUserUID = authUser.uid;
-      server.listen(appPort,appIp, () => {
-         console.log(`[server]Example app listening at http://${appIp}:${appPort}`)
-      })
-      BrodcastListener();
-      console.log("signed as Kubas445");
+      if(server.listening)
+         server.close();
+
+      database.ref("/users/"+lastUserUID+"/profile/username").once("value",data => {
+         server.listen(appPort,appIp, () => {
+            console.log(`[server]Example app listening at http://${appIp}:${appPort}`);
+         })
+         BrodcastListener();
+         console.log("signed as "+data.val());
+      });
    } else {
+      if(server.listening)
+         server.close();
+
+      server.listen(80,appIp, () => {
+         console.log(`[server]Example app listening at http://${appIp}:${80}`);
+      });
       authState = 'SIGNED_OUT'
    }
 });
 
-auth.signInWithEmailAndPassword("jakubsedlak102@gmail.com","1593572684").catch(error => console.log(error));
+//auth.signInWithEmailAndPassword("jakubsedlak102@gmail.com","1593572684").catch(error => console.log(error));
 
 //#####################################
 //          WebSocket Setup
@@ -204,7 +216,7 @@ wss.on('connection', (ws,request) => {
             }
             break;
          case "getLoginStatus":
-            ws.send(JSON.stringify({status:authState}))
+            ws.send(JSON.stringify({status:authState}));
             break;
          default:
             console.log("[server]unknown command");
@@ -361,23 +373,41 @@ function setIrrigationSoilHumidityESPCommand(mac,val) {
 //#####################################
 //             Web interface
 //#####################################
-//app.use(express.static("server_sites/build"));
+app.use('/static',express.static("server_sites/build/static"));
+app.use(express.urlencoded({
+   extended: true
+}));
 app.get("/status",(req,resp)=>{
    if(authState === 'SIGNED_IN')
       resp.send('server is running');
    else
-      resp.send("sing in please");
+      resp.send("sing in please <a href='/login'>Login page</a>");
+});
+
+app.get("/login", (req,resp)=>{
+   resp.sendFile(path.join(__dirname+"/server_sites/build/index.html"));
+});
+
+app.post("/login", (req, resp) => {
+   if(authState === "SIGNED_IN" )
+      auth.signOut().then(()=>{
+         auth.signInWithEmailAndPassword(req.body.email,req.body.password).catch(error => console.log(error));
+      });
+   else
+      auth.signInWithEmailAndPassword(req.body.email,req.body.password).catch(error => console.log(error));
+
+   resp.end();
 });
 
 
 function onExit() {
-   db.close((err) => {
+   /*db.close((err) => {
       if (err) {
          return console.error(err.message);
       }
-      console.log('Close the database connection.');
+      console.log('Close the database connection.');*/
       process.exit();
-   });
+   //});
 }
 //process.on('exit', onExit);
 
