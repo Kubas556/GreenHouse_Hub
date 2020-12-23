@@ -8,8 +8,20 @@ import Button from "@material-ui/core/Button";
 
 export default function login() {
     return(
-        <div>
             <Grid container direction={"row"} justify={"center"} alignItems={"center"} style={{minHeight:'100vh',position:'absolute'}}>
+                <style>{
+                    "body{"+
+                    "color: rgba(0, 0, 0, 0.87);"+
+                    "margin: 0;"+
+                    "font-size: 0.875rem;"+
+                    'font-family: "Roboto", "Helvetica", "Arial", sans-serif;'+
+                    "font-weight: 400;"+
+                    "line-height: 1.43;"+
+                    "letter-spacing: 0.01071em;"+
+                    "background-color: #fafafa;"+
+                    "}"
+                }
+                </style>
                 <Container maxWidth="xs">
                     <Paper>
                         <form method={"post"}>
@@ -46,6 +58,5 @@ export default function login() {
                     </Paper>
                 </Container>
             </Grid>
-        </div>
     )
 }

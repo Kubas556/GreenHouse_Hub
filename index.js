@@ -169,8 +169,11 @@ auth.onAuthStateChanged(authUser => {
       if(server.listening)
          server.close();
 
+      if(brodcastListener)
+         brodcastListener.close();
+
       server.listen(3200,appIp, () => {
-         console.log(`[server]Example app listening at http://${appIp}:${80}`);
+         console.log(`[server]Example app listening at http://${appIp}:${3200}`);
       });
       authState = 'SIGNED_OUT'
    }
@@ -420,14 +423,16 @@ app.get("/login", (req,resp)=>{
 app.post("/login", (req, resp) => {
    loginUser(req.body.email,req.body.password);
 
-   resp.end();
+   resp.redirect( "http://"+appIp+":3300/status");
 });
 
-
+//#####################################
+//             Exit program
+//#####################################
 function onExit() {
    db.close((err) => {
       if (err) {
-         return console.error(err.message);
+         console.error(err.message);
       }
       console.log('Close the database connection.');
       process.exit();
