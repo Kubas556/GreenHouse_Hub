@@ -2,7 +2,7 @@ const express = require("express");
 const firebase = require('firebase');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-/*let db = new sqlite3.Database('/home/pi/greenhouse.db', (err) => {
+let db = new sqlite3.Database('/home/pi/greenhouse.db', (err) => {
    if (err) {
       return console.error(err.message);
    }
@@ -10,10 +10,37 @@ const path = require('path');
 });
 
 db.serialize(function() {
-  db.each("SELECT * FROM login_user", function(err, row) {
-      console.log(row.mail);
+  db.get("SELECT email,password FROM LogedIn", function(err, row) {
+     if(row)
+      if(row.email)
+      loginUser(row.email,row.password);
+      else
+      console.log("no loged user yet");
   });
-});*/
+});
+
+function loginUser(email,password) {
+   if(authState === "SIGNED_IN" )
+      auth.signOut().then(()=>{
+         auth.signInWithEmailAndPassword(email,password).catch(error => error).then(resp=>{
+         if(resp)
+            if(resp.user)
+            db.run("INSERT INTO LogedIn (ID,email,password) VALUES (1,$email,$password) ON CONFLICT (ID) DO UPDATE SET email=$email,password=$password;",{
+               $email:email,
+               $password:password
+               });
+         });
+      });
+   else
+      auth.signInWithEmailAndPassword(email,password).catch(error => error).then(resp=>{
+         if(resp)
+            if(resp.user)
+            db.run("INSERT INTO LogedIn (ID,email,password) VALUES (1,$email,$password) ON CONFLICT (ID) DO UPDATE SET email=$email,password=$password;",{
+               $email:email,
+               $password:password
+               });
+         });
+}
 
 //const account = require("./serviceAccount.json");
 //app var
@@ -50,6 +77,7 @@ if (!firebase.apps.length) {
 const auth = firebase.auth();
 const database = firebase.database();
 var authState = 'SIGNED_OUT';
+let brodcastListener;
 var lastUserUID;
 let targetTempListeners = [];
 let irrigationListeners = [];
@@ -131,21 +159,22 @@ auth.onAuthStateChanged(authUser => {
          server.listen(appPort,appIp, () => {
             console.log(`[server]Example app listening at http://${appIp}:${appPort}`);
          })
-         BrodcastListener();
+         
+         if(!brodcastListener)
+         brodcastListener = BrodcastListener();
+         
          console.log("signed as "+data.val());
       });
    } else {
       if(server.listening)
          server.close();
 
-      server.listen(80,appIp, () => {
+      server.listen(3200,appIp, () => {
          console.log(`[server]Example app listening at http://${appIp}:${80}`);
       });
       authState = 'SIGNED_OUT'
    }
 });
-
-//auth.signInWithEmailAndPassword("jakubsedlak102@gmail.com","1593572684").catch(error => console.log(error));
 
 //#####################################
 //          WebSocket Setup
@@ -389,25 +418,20 @@ app.get("/login", (req,resp)=>{
 });
 
 app.post("/login", (req, resp) => {
-   if(authState === "SIGNED_IN" )
-      auth.signOut().then(()=>{
-         auth.signInWithEmailAndPassword(req.body.email,req.body.password).catch(error => console.log(error));
-      });
-   else
-      auth.signInWithEmailAndPassword(req.body.email,req.body.password).catch(error => console.log(error));
+   loginUser(req.body.email,req.body.password);
 
    resp.end();
 });
 
 
 function onExit() {
-   /*db.close((err) => {
+   db.close((err) => {
       if (err) {
          return console.error(err.message);
       }
-      console.log('Close the database connection.');*/
+      console.log('Close the database connection.');
       process.exit();
-   //});
+   });
 }
 //process.on('exit', onExit);
 
