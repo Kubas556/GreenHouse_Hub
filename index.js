@@ -152,13 +152,13 @@ auth.onAuthStateChanged(authUser => {
    if(authUser) {
       authState = 'SIGNED_IN';
       lastUserUID = authUser.uid;
-      if(server.listening)
-         server.close();
+      /*if(server.listening)
+         server.close();*/
 
       database.ref("/users/"+lastUserUID+"/profile/username").once("value",data => {
-         server.listen(appPort,appIp, () => {
+         /*server.listen(appPort,appIp, () => {
             console.log(`[server]Example app listening at http://${appIp}:${appPort}`);
-         })
+         })*/
          
          if(!brodcastListener)
          brodcastListener = BrodcastListener();
@@ -166,15 +166,23 @@ auth.onAuthStateChanged(authUser => {
          console.log("signed as "+data.val());
       });
    } else {
-      if(server.listening)
-         server.close();
+      /*if(server.listening)
+         server.close();*/
 
-      if(brodcastListener)
+      if(brodcastListener) {
          brodcastListener.close();
+         brodcastListener = undefined;
+      }
 
-      server.listen(3200,appIp, () => {
-         console.log(`[server]Example app listening at http://${appIp}:${3200}`);
+      wss.clients.forEach(function each(client) {
+         if (client.readyState === WebSocket.OPEN) {
+           client.terminate();
+         }
       });
+
+      /*server.listen(3200,appIp, () => {
+         console.log(`[server]Example app listening at http://${appIp}:${3200}`);
+      });*/
       authState = 'SIGNED_OUT'
    }
 });
@@ -184,6 +192,8 @@ auth.onAuthStateChanged(authUser => {
 //#####################################
 
 wss.on('connection', (ws,request) => {
+   if(authState !== "SIGNED_IN")
+   return ws.terminate();
    //connection is up, let's add a simple simple event
    ws.on('message', (message) => {
       const _ip = request.socket.remoteAddress;
@@ -411,7 +421,7 @@ app.use(express.urlencoded({
 }));
 app.get("/status",(req,resp)=>{
    if(authState === 'SIGNED_IN')
-      resp.send('server is running');
+      resp.send('server is running <form action="/logout" method="post"><input type="submit" value="Submit"></form>');
    else
       resp.send("sing in please <a href='/login'>Login page</a>");
 });
@@ -426,6 +436,17 @@ app.post("/login", (req, resp) => {
    resp.redirect( "http://"+appIp+":3300/status");
 });
 
+app.post("/logout", (req, resp) => {
+   auth.signOut().then(()=>{
+      resp.redirect( "http://"+appIp+":3300/status");
+   });
+});
+
+
+server.listen(appPort,appIp, () => {
+            console.log(`[server]Example app listening at http://${appIp}:${appPort}`);
+         })
+
 //#####################################
 //             Exit program
 //#####################################
@@ -438,6 +459,7 @@ function onExit() {
       process.exit();
    });
 }
+
 //process.on('exit', onExit);
 
 //ctrl+c event
