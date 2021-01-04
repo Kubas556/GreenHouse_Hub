@@ -19,7 +19,7 @@ db.serialize(function() {
   });
 });
 
-function loginUser(email,password) {
+function loginUser(email,password,webResponse) {
    if(authState === "SIGNED_IN" )
       auth.signOut().then(()=>{
          auth.signInWithEmailAndPassword(email,password).catch(error => error).then(resp=>{
@@ -29,6 +29,9 @@ function loginUser(email,password) {
                $email:email,
                $password:password
                });
+               
+               if(webResponse)
+               webResponse.redirect("http://"+appIp+":3300/status");
          });
       });
    else
@@ -54,6 +57,7 @@ const http = require('http');
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 const BrodcastListener = require('./BrodcastListener');
+const GenerateStatusPage = require('./GenerateStatusPage');
 let macToIpAddress = [];
 
 
@@ -79,6 +83,7 @@ const database = firebase.database();
 var authState = 'SIGNED_OUT';
 let brodcastListener;
 var lastUserUID;
+var lastUserName;
 let targetTempListeners = [];
 let irrigationListeners = [];
 let irrigationSoilHumidityListeners = [];
@@ -163,6 +168,7 @@ auth.onAuthStateChanged(authUser => {
          if(!brodcastListener)
          brodcastListener = BrodcastListener();
          
+         lastUserName = data.val();
          console.log("signed as "+data.val());
       });
    } else {
@@ -194,7 +200,7 @@ auth.onAuthStateChanged(authUser => {
 wss.on('connection', (ws,request) => {
    if(authState !== "SIGNED_IN")
    return ws.terminate();
-   //connection is up, let's add a simple simple event
+  
    ws.on('message', (message) => {
       const _ip = request.socket.remoteAddress;
       message = message.replace('\n','');
@@ -421,7 +427,7 @@ app.use(express.urlencoded({
 }));
 app.get("/status",(req,resp)=>{
    if(authState === 'SIGNED_IN')
-      resp.send('server is running <form action="/logout" method="post"><input type="submit" value="Submit"></form>');
+      resp.send(GenerateStatusPage(lastUserName,macToIpAddress));
    else
       resp.send("sing in please <a href='/login'>Login page</a>");
 });
@@ -431,14 +437,18 @@ app.get("/login", (req,resp)=>{
 });
 
 app.post("/login", (req, resp) => {
-   loginUser(req.body.email,req.body.password);
-
-   resp.redirect( "http://"+appIp+":3300/status");
+   loginUser(req.body.email,req.body.password,resp);
 });
+
+app.post("/discDev", (req, resp) => {
+   console.log(req.body.mac);
+   resp.redirect("http://"+appIp+":3300/status");
+});
+
 
 app.post("/logout", (req, resp) => {
    auth.signOut().then(()=>{
-      resp.redirect( "http://"+appIp+":3300/status");
+      resp.redirect("http://"+appIp+":3300/status");
    });
 });
 
