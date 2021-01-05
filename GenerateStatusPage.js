@@ -1,13 +1,18 @@
+/**
+ * @return {string}
+ */
 module.exports = function GenerateStatusPage(lastUserName,devices) {
 	
 	function list() {
 		let generatedList = '<ul>';
 		devices.forEach(device=>{
 			generatedList += 
-			'<li>'+
+			'<li style="background: cornflowerblue;\n' +
+				'    width: 19rem;">'+
 				device.mac+
-				'<form action="/discDev" method="post">'+
-				'<input type="text" id="mac" name="mac" value="'+device.mac+'">'+
+				'<form style="display: inline-block;\n' +
+				'    margin: 0;\n" action="/discDev" method="post">'+
+				'<input type="text" style="display: none" id="mac" name="mac" value="'+device.mac+'">'+
 				'<input type="submit" value="Disconnect From WiFi">'+
 				'</form>'+
 			'</li>';
@@ -20,5 +25,7 @@ module.exports = function GenerateStatusPage(lastUserName,devices) {
 			'<p>Logged in as: '+lastUserName+'</p>'+
 			'<form action="/logout" method="post">'+
 				'<input type="submit" value="Logout">'+
-			'</form>'+list();
+			'</form>'+
+		'<h3>Connected devices</h3>'+
+		list();
 }

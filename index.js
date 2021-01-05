@@ -28,7 +28,9 @@ function loginUser(email,password,webResponse) {
             db.run("INSERT INTO LogedIn (ID,email,password) VALUES (1,$email,$password) ON CONFLICT (ID) DO UPDATE SET email=$email,password=$password;",{
                $email:email,
                $password:password
-               });
+               },function (call,err) {
+               console.log(call,err);
+            });
                
                if(webResponse)
                webResponse.redirect("http://"+appIp+":3300/status");
@@ -41,8 +43,13 @@ function loginUser(email,password,webResponse) {
             db.run("INSERT INTO LogedIn (ID,email,password) VALUES (1,$email,$password) ON CONFLICT (ID) DO UPDATE SET email=$email,password=$password;",{
                $email:email,
                $password:password
-               });
-         });
+               },function (call,err) {
+               console.log(call,err);
+            });
+
+         if(webResponse)
+            webResponse.redirect("http://"+appIp+":3300/status");
+      });
 }
 
 //const account = require("./serviceAccount.json");
@@ -441,7 +448,8 @@ app.post("/login", (req, resp) => {
 });
 
 app.post("/discDev", (req, resp) => {
-   console.log(req.body.mac);
+   let targetDevice = macToIpAddress.filter(device=>device.mac === req.body.mac);
+   targetDevice[0].ws.send("disconnectWiFi");
    resp.redirect("http://"+appIp+":3300/status");
 });
 
@@ -469,8 +477,6 @@ function onExit() {
       process.exit();
    });
 }
-
-//process.on('exit', onExit);
 
 //ctrl+c event
 process.on('SIGINT', onExit);
