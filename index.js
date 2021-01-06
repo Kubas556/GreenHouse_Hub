@@ -439,6 +439,10 @@ app.get("/status",(req,resp)=>{
       resp.send("sing in please <a href='/login'>Login page</a>");
 });
 
+app.get("/",(req, resp) => {
+   resp.redirect("http://"+appIp+":3300/status");
+});
+
 app.get("/login", (req,resp)=>{
    resp.sendFile(path.join(__dirname+"/server_sites/build/index.html"));
 });
