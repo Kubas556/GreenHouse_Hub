@@ -273,6 +273,14 @@ wss.on('connection', (ws,request) => {
          case "getLoginStatus":
             ws.send(JSON.stringify({status:authState}));
             break;
+         case "notify":
+            if(command.length === 4) {
+               if(command[2] === "outOfWater")
+               setLowWaterNotify(command[1], command[3]);
+            } else {
+               console.log("[server]bad arguments");
+            }
+            break;
          default:
             console.log("[server]unknown command");
             //ws.send("res|unknown");
@@ -365,7 +373,7 @@ function getIrrigationSoilHumidity(ws,mac) {
 //###########################################
 
 //send new temp to firebase
-function setTempCommand(mac,temp) {
+function setTempCommand(mac, temp) {
    if(findIpAddress(mac).length > 0) {
       console.log("[server]setTemp command executed on " + mac + " with temperature of " + temp);
       database.ref("/users/" + lastUserUID + "/devices/" + mac + "/temp").set(temp.toString()).catch(error => {
@@ -375,6 +383,17 @@ function setTempCommand(mac,temp) {
    } else {
       console.log("[server]invalid parameters value!");
       //ws.send("res|invalid params");
+   }
+}
+
+function setLowWaterNotify(mac, val) {
+   if(findIpAddress(mac).length > 0) {
+      console.log("[server]set notification for low water on " + mac + " value: " + val);
+      database.ref("/users/" + lastUserUID + "/devices/" + mac + "/notifications/lowWater").set(val).catch(error => {
+         console.log("[server]bad command");
+      });
+   } else {
+      console.log("[server]invalid parameters value!");
    }
 }
 
