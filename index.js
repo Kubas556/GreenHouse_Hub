@@ -253,6 +253,13 @@ wss.on('connection', (ws,request) => {
                console.log("[server]bad arguments");
             }
             break;
+         case "setAirHumidity":
+         if(command.length === 3) {
+            setAirHumidityCommand(command[1],command[2]);
+         } else {
+            console.log("[server]bad arguments");
+         }
+         break;
          case "sendMac":
             if(command.length === 2) {
                findUserDevice(command[1]).once("value",data => {
@@ -402,6 +409,20 @@ function setSoilHumidityCommand(mac,hum) {
    if(findIpAddress(mac).length > 0) {
       console.log("[server]setSoilHumidityCommand command executed on " + mac + " with humidity of " + hum);
       database.ref("/users/" + lastUserUID + "/devices/" + mac + "/soilHumidity").set(hum.toString()).catch(error => {
+         console.log("[server]bad command");
+      });
+      //ws.send("res|success");
+   } else {
+      console.log("[server]invalid parameters value!");
+      //ws.send("res|invalid params");
+   }
+}
+
+//send new air humidity to firebase
+function setAirHumidityCommand(mac,hum) {
+   if(findIpAddress(mac).length > 0) {
+      console.log("[server]setAirHumidityCommand command executed on " + mac + " with humidity of " + hum);
+      database.ref("/users/" + lastUserUID + "/devices/" + mac + "/airHumidity").set(hum.toString()).catch(error => {
          console.log("[server]bad command");
       });
       //ws.send("res|success");
