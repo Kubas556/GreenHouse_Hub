@@ -1,2 +1,4 @@
 node_modules
 serviceAccount.json
+server_administration/node_modules
+server_sites/node_modules

@@ -1,12 +1,57 @@
 const express = require("express");
 const firebase = require('firebase');
 const sqlite3 = require('sqlite3').verbose();
-let db = new sqlite3.Database(':memory:', (err) => {
+const path = require('path');
+let db = new sqlite3.Database('/home/pi/greenhouse.db', (err) => {
    if (err) {
       return console.error(err.message);
    }
-   console.log('Connected to the in-memory SQlite database.');
+   console.log('Connected to the greenhouse SQlite database.');
 });
+
+db.serialize(function() {
+  db.get("SELECT email,password FROM LogedIn", function(err, row) {
+     if(row)
+      if(row.email)
+      loginUser(row.email,row.password);
+      else
+      console.log("no loged user yet");
+  });
+});
+
+function loginUser(email,password,webResponse) {
+   if(authState === "SIGNED_IN" )
+      auth.signOut().then(()=>{
+         auth.signInWithEmailAndPassword(email,password).catch(error => error).then(resp=>{
+         if(resp)
+            if(resp.user)
+            db.run("INSERT INTO LogedIn (ID,email,password) VALUES (1,$email,$password) ON CONFLICT (ID) DO UPDATE SET email=$email,password=$password;",{
+               $email:email,
+               $password:password
+               },function (call,err) {
+               console.log(call,err);
+            });
+               
+               if(webResponse)
+               webResponse.redirect("http://"+appIp+":3300/status");
+         });
+      });
+   else
+      auth.signInWithEmailAndPassword(email,password).catch(error => error).then(resp=>{
+         if(resp)
+            if(resp.user)
+            db.run("INSERT INTO LogedIn (ID,email,password) VALUES (1,$email,$password) ON CONFLICT (ID) DO UPDATE SET email=$email,password=$password;",{
+               $email:email,
+               $password:password
+               },function (call,err) {
+               console.log(call,err);
+            });
+
+         if(webResponse)
+            webResponse.redirect("http://"+appIp+":3300/status");
+      });
+}
+
 //const account = require("./serviceAccount.json");
 //app var
 const ip = require('ip');
@@ -19,6 +64,7 @@ const http = require('http');
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 const BrodcastListener = require('./BrodcastListener');
+const GenerateStatusPage = require('./GenerateStatusPage');
 let macToIpAddress = [];
 
 
@@ -42,7 +88,9 @@ if (!firebase.apps.length) {
 const auth = firebase.auth();
 const database = firebase.database();
 var authState = 'SIGNED_OUT';
+let brodcastListener;
 var lastUserUID;
+var lastUserName;
 let targetTempListeners = [];
 let irrigationListeners = [];
 let irrigationSoilHumidityListeners = [];
@@ -116,24 +164,50 @@ auth.onAuthStateChanged(authUser => {
    if(authUser) {
       authState = 'SIGNED_IN';
       lastUserUID = authUser.uid;
-      server.listen(appPort,appIp, () => {
-         console.log(`[server]Example app listening at http://${appIp}:${appPort}`)
-      })
-      BrodcastListener();
-      console.log("signed as Kubas445");
+      /*if(server.listening)
+         server.close();*/
+
+      database.ref("/users/"+lastUserUID+"/profile/username").once("value",data => {
+         /*server.listen(appPort,appIp, () => {
+            console.log(`[server]Example app listening at http://${appIp}:${appPort}`);
+         })*/
+         
+         if(!brodcastListener)
+         brodcastListener = BrodcastListener();
+         
+         lastUserName = data.val();
+         console.log("signed as "+data.val());
+      });
    } else {
+      /*if(server.listening)
+         server.close();*/
+
+      if(brodcastListener) {
+         brodcastListener.close();
+         brodcastListener = undefined;
+      }
+
+      wss.clients.forEach(function each(client) {
+         if (client.readyState === WebSocket.OPEN) {
+           client.terminate();
+         }
+      });
+
+      /*server.listen(3200,appIp, () => {
+         console.log(`[server]Example app listening at http://${appIp}:${3200}`);
+      });*/
       authState = 'SIGNED_OUT'
    }
 });
-
-auth.signInWithEmailAndPassword("jakubsedlak102@gmail.com","1593572684").catch(error => console.log(error));
 
 //#####################################
 //          WebSocket Setup
 //#####################################
 
 wss.on('connection', (ws,request) => {
-   //connection is up, let's add a simple simple event
+   if(authState !== "SIGNED_IN")
+   return ws.terminate();
+  
    ws.on('message', (message) => {
       const _ip = request.socket.remoteAddress;
       message = message.replace('\n','');
@@ -179,6 +253,13 @@ wss.on('connection', (ws,request) => {
                console.log("[server]bad arguments");
             }
             break;
+         case "setAirHumidity":
+         if(command.length === 3) {
+            setAirHumidityCommand(command[1],command[2]);
+         } else {
+            console.log("[server]bad arguments");
+         }
+         break;
          case "sendMac":
             if(command.length === 2) {
                findUserDevice(command[1]).once("value",data => {
@@ -194,6 +275,17 @@ wss.on('connection', (ws,request) => {
             } else {
                console.log("[server]bad arguments");
                //ws.send("res|bad args");
+            }
+            break;
+         case "getLoginStatus":
+            ws.send(JSON.stringify({status:authState}));
+            break;
+         case "notify":
+            if(command.length === 4) {
+               if(command[2] === "outOfWater")
+               setLowWaterNotify(command[1], command[3]);
+            } else {
+               console.log("[server]bad arguments");
             }
             break;
          default:
@@ -288,7 +380,7 @@ function getIrrigationSoilHumidity(ws,mac) {
 //###########################################
 
 //send new temp to firebase
-function setTempCommand(mac,temp) {
+function setTempCommand(mac, temp) {
    if(findIpAddress(mac).length > 0) {
       console.log("[server]setTemp command executed on " + mac + " with temperature of " + temp);
       database.ref("/users/" + lastUserUID + "/devices/" + mac + "/temp").set(temp.toString()).catch(error => {
@@ -301,11 +393,36 @@ function setTempCommand(mac,temp) {
    }
 }
 
+function setLowWaterNotify(mac, val) {
+   if(findIpAddress(mac).length > 0) {
+      console.log("[server]set notification for low water on " + mac + " value: " + val);
+      database.ref("/users/" + lastUserUID + "/devices/" + mac + "/notifications/lowWater").set(val).catch(error => {
+         console.log("[server]bad command");
+      });
+   } else {
+      console.log("[server]invalid parameters value!");
+   }
+}
+
 //send new soil humidity to firebase
 function setSoilHumidityCommand(mac,hum) {
    if(findIpAddress(mac).length > 0) {
       console.log("[server]setSoilHumidityCommand command executed on " + mac + " with humidity of " + hum);
       database.ref("/users/" + lastUserUID + "/devices/" + mac + "/soilHumidity").set(hum.toString()).catch(error => {
+         console.log("[server]bad command");
+      });
+      //ws.send("res|success");
+   } else {
+      console.log("[server]invalid parameters value!");
+      //ws.send("res|invalid params");
+   }
+}
+
+//send new air humidity to firebase
+function setAirHumidityCommand(mac,hum) {
+   if(findIpAddress(mac).length > 0) {
+      console.log("[server]setAirHumidityCommand command executed on " + mac + " with humidity of " + hum);
+      database.ref("/users/" + lastUserUID + "/devices/" + mac + "/airHumidity").set(hum.toString()).catch(error => {
          console.log("[server]bad command");
       });
       //ws.send("res|success");
@@ -351,25 +468,59 @@ function setIrrigationSoilHumidityESPCommand(mac,val) {
 //#####################################
 //             Web interface
 //#####################################
-//app.use(express.static("server_sites/build"));
+app.use('/static',express.static("server_sites/build/static"));
+app.use(express.urlencoded({
+   extended: true
+}));
 app.get("/status",(req,resp)=>{
    if(authState === 'SIGNED_IN')
-      resp.send('server is running');
+      resp.send(GenerateStatusPage(lastUserName,macToIpAddress));
    else
-      resp.send("sing in please");
+      resp.send("sing in please <a href='/login'>Login page</a>");
+});
+
+app.get("/",(req, resp) => {
+   resp.redirect("http://"+appIp+":3300/status");
+});
+
+app.get("/login", (req,resp)=>{
+   resp.sendFile(path.join(__dirname+"/server_sites/build/index.html"));
+});
+
+app.post("/login", (req, resp) => {
+   loginUser(req.body.email,req.body.password,resp);
+});
+
+app.post("/discDev", (req, resp) => {
+   let targetDevice = macToIpAddress.filter(device=>device.mac === req.body.mac);
+   targetDevice[0].ws.send("disconnectWiFi");
+   resp.redirect("http://"+appIp+":3300/status");
 });
 
 
+app.post("/logout", (req, resp) => {
+   auth.signOut().then(()=>{
+      resp.redirect("http://"+appIp+":3300/status");
+   });
+});
+
+
+server.listen(appPort,appIp, () => {
+            console.log(`[server]Example app listening at http://${appIp}:${appPort}`);
+         })
+
+//#####################################
+//             Exit program
+//#####################################
 function onExit() {
    db.close((err) => {
       if (err) {
-         return console.error(err.message);
+         console.error(err.message);
       }
       console.log('Close the database connection.');
       process.exit();
    });
 }
-//process.on('exit', onExit);
 
 //ctrl+c event
 process.on('SIGINT', onExit);

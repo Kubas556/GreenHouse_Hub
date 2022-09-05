@@ -1,0 +1,1 @@
+create table LogedIn (ID INTEGER PRIMARY KEY, email TEXT NOT NULL, password TEXT NOT NULL);

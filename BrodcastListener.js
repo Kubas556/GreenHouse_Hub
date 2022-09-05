@@ -25,4 +25,6 @@ module.exports = function BrodcastListener () {
     });
 
     client.bind(brodcastListenPort);
-}
+
+    return client;
+};
